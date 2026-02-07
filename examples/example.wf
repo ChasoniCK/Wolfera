@@ -40,7 +40,7 @@ for i = 0 to 5 {
 	print(join(map(["l", "sp"], oopify), ", "))
 }
 
-wait(15)
+wait(5)
 
 stop_time = time.now("s")
 execu_time = stop_time - start_time
