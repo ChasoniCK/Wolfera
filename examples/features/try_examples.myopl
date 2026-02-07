@@ -1,0 +1,30 @@
+# try to catch errors
+try {
+    fqjwagads
+} catch as error {
+    print("oops")
+}
+
+# Using errors as values
+try {
+    1/input_int()
+} catch as error {
+    print("oops")
+    print(print_ret(error) + " happened")
+}
+
+# Catch SyntaxErrors in other files
+try {
+    import "some_bad_library.myopl"
+} catch as error {
+    print("really bad library")
+    print(error)
+}
+
+# Error reports go outside of catch blocks
+try {
+    print("Do you want to see the new-and-improved error reports? (0/1)")
+    if input_int() { 1/(6-6) }
+} catch as error {
+    1/(7-7)
+}

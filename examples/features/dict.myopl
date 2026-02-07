@@ -1,0 +1,14 @@
+dict = {"abc": 123}
+print(dict)
+
+print(dict["abc"])
+
+dict["bcd"] = 234
+dict["abc"] = 456
+
+print(dict)
+
+for key in dict {
+    print(key)
+    print(dict[key])
+}

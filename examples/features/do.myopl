@@ -1,0 +1,22 @@
+# do statement
+do {
+    print("Hello from DO")
+}
+
+# do creates new context
+x = 1
+do {
+    x = 2
+    print("Should be 2")
+    print(x)
+}
+print("Should be 1")
+print(x)
+
+# do can return values
+y = do {
+    return 2 * 2
+}
+
+print("Should be 4")
+print(y)

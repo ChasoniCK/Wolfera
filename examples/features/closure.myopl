@@ -1,0 +1,4 @@
+fun parent(x) {
+    fun child() -> x
+    return child
+}

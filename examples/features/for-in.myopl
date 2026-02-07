@@ -1,0 +1,7 @@
+for char in "abc" {
+    print(char)
+}
+
+for elt in [1, 2, 3] {
+    print(elt)
+}

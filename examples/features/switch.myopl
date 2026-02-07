@@ -1,0 +1,16 @@
+write(1, "(a/b/c) ")
+switch input() {
+    case "a" {
+        print("Hey! (a)")
+    }
+    case "b" {
+        print("Hi! (b)")
+    }
+    case "c" {
+        print("Hello! (c)")
+    }
+    else {
+        write(2, "You are literally Satan\n")
+        return 1
+    }
+}

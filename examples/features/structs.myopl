@@ -1,0 +1,13 @@
+struct point {
+  x
+  y
+}
+
+fun print_point(p) {
+  print("(" + print_ret(p.x) + ", " + print_ret(p.y) + ")")
+}
+
+p = point{}
+p.x = 69
+p.y = 420
+print_point(p)

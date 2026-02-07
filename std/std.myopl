@@ -1,0 +1,5 @@
+do {
+  fun read_all(filename) {
+    # not implemented
+  }
+}

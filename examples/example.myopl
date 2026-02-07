@@ -1,0 +1,37 @@
+# This is a very useful piece of software
+
+#*
+	This is a multi-line comment test
+	with asterisks in it *******
+	Amazing!
+*#
+
+fun oopify(prefix) -> prefix + "oop"
+
+fun join(elements, separator) {
+	result = ""
+	len_ = len(elements)
+
+	for i = 0 to len_ {
+		result = result + elements[i]
+		if i != len_ - 1 { result = result + separator }
+	}
+
+	return result
+}
+
+fun map(elements, func) {
+	new_elements = []
+
+	for element in elements {
+		append(new_elements, func(element))
+	}
+
+	return new_elements
+}
+
+print("Greetings universe!")
+
+for i = 0 to 5 {
+	print(join(map(["l", "sp"], oopify), ", "))
+}
