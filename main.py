@@ -34,6 +34,7 @@ TOKEN_SYMBOLS = {
     TokenType.MINUS: "-",
     TokenType.MUL: "*",
     TokenType.DIV: "/",
+    TokenType.MOD: "%",
     TokenType.POW: "^",
     TokenType.EE: "==",
     TokenType.NE: "!=",

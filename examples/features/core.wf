@@ -1,0 +1,22 @@
+fun is_even(x) { return x % 2 == 0 }
+fun add(a, b) { return a + b }
+
+nums = range(0, 10, 1)
+print(nums)
+
+print(map(nums, fun(x) -> x * 2))
+print(filter(nums, is_even))
+print(reduce(nums, add, 0))
+
+letters = ["a", "b", "c"]
+print(join(letters, ","))
+print(split("a,b,c", ","))
+
+text = "  hello world  "
+print(trim(text))
+print(ltrim(text))
+print(rtrim(text))
+
+print(startswith("hello", "he"))
+print(endswith("hello", "lo"))
+print(contains("hello", "ell"))

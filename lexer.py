@@ -43,6 +43,7 @@ class TokenType(Enum):
     MINUS = auto()
     MUL = auto()
     DIV = auto()
+    MOD = auto()
     POW = auto()
     EQ = auto()
     LPAREN = auto()
@@ -126,6 +127,7 @@ SINGLE_CHAR_TOKS: Dict[str, TokenType] = {
     "+": TokenType.PLUS,
     "*": TokenType.MUL,
     "/": TokenType.DIV,
+    "%": TokenType.MOD,
     "^": TokenType.POW,
     "(": TokenType.LPAREN,
     ")": TokenType.RPAREN,

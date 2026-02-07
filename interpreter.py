@@ -62,6 +62,9 @@ class Value:
     def dived_by(self, other: "Value") -> ValueResult:
         return None, self.illegal_operation(other)
 
+    def modded_by(self, other: "Value") -> ValueResult:
+        return None, self.illegal_operation(other)
+
     def powed_by(self, other: "Value") -> ValueResult:
         return None, self.illegal_operation(other)
 
@@ -240,6 +243,19 @@ class Number(Value):
                 )
 
             return Number(self.value / other.value).set_context(self.context), None
+        else:
+            return None, Value.illegal_operation(self, other)
+
+    def modded_by(self, other):
+        if isinstance(other, Number):
+            if other.value == 0:
+                return None, RTError(
+                    other.pos_start, other.pos_end,
+                    'Modulo by zero',
+                    self.context
+                )
+
+            return Number(self.value % other.value).set_context(self.context), None
         else:
             return None, Value.illegal_operation(self, other)
 
@@ -600,6 +616,18 @@ class BuiltInFunction(BaseFunction):
     pop: ClassVar["BuiltInFunction"]
     extend: ClassVar["BuiltInFunction"]
     len: ClassVar["BuiltInFunction"]
+    range: ClassVar["BuiltInFunction"]
+    map: ClassVar["BuiltInFunction"]
+    filter: ClassVar["BuiltInFunction"]
+    reduce: ClassVar["BuiltInFunction"]
+    join: ClassVar["BuiltInFunction"]
+    split: ClassVar["BuiltInFunction"]
+    trim: ClassVar["BuiltInFunction"]
+    ltrim: ClassVar["BuiltInFunction"]
+    rtrim: ClassVar["BuiltInFunction"]
+    startswith: ClassVar["BuiltInFunction"]
+    endswith: ClassVar["BuiltInFunction"]
+    contains: ClassVar["BuiltInFunction"]
     run: ClassVar["BuiltInFunction"]
     open: ClassVar["BuiltInFunction"]
     read: ClassVar["BuiltInFunction"]
@@ -787,6 +815,270 @@ class BuiltInFunction(BaseFunction):
             ))
 
         return RTResult().success(Number(len(list_.elements)))
+
+    @args(["start", "end", "step"], [None, None, Number(1)])
+    def execute_range(self, exec_ctx):
+        start = exec_ctx.symbol_table.get("start")
+        end = exec_ctx.symbol_table.get("end")
+        step = exec_ctx.symbol_table.get("step")
+
+        if not isinstance(start, Number):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "First argument must be number",
+                exec_ctx
+            ))
+        if not isinstance(end, Number):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Second argument must be number",
+                exec_ctx
+            ))
+        if not isinstance(step, Number):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Third argument must be number",
+                exec_ctx
+            ))
+        if step.value == 0:
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Step cannot be 0",
+                exec_ctx
+            ))
+
+        elements = []
+        i = start.value
+        if step.value >= 0:
+            while i < end.value:
+                elements.append(Number(i))
+                i += step.value
+        else:
+            while i > end.value:
+                elements.append(Number(i))
+                i += step.value
+
+        return RTResult().success(List(elements))
+
+    @args(["list", "func"])
+    def execute_map(self, exec_ctx):
+        res = RTResult()
+        list_ = exec_ctx.symbol_table.get("list")
+        func = exec_ctx.symbol_table.get("func")
+
+        if not isinstance(list_, List):
+            return res.failure(RTError(
+                self.pos_start, self.pos_end,
+                "First argument must be list",
+                exec_ctx
+            ))
+        if not isinstance(func, BaseFunction):
+            return res.failure(RTError(
+                self.pos_start, self.pos_end,
+                "Second argument must be function",
+                exec_ctx
+            ))
+
+        results = []
+        for element in list_.elements:
+            value = res.register(func.execute([element]))
+            if res.should_return():
+                return res
+            results.append(value)
+
+        return res.success(List(results))
+
+    @args(["list", "func"])
+    def execute_filter(self, exec_ctx):
+        res = RTResult()
+        list_ = exec_ctx.symbol_table.get("list")
+        func = exec_ctx.symbol_table.get("func")
+
+        if not isinstance(list_, List):
+            return res.failure(RTError(
+                self.pos_start, self.pos_end,
+                "First argument must be list",
+                exec_ctx
+            ))
+        if not isinstance(func, BaseFunction):
+            return res.failure(RTError(
+                self.pos_start, self.pos_end,
+                "Second argument must be function",
+                exec_ctx
+            ))
+
+        results = []
+        for element in list_.elements:
+            value = res.register(func.execute([element]))
+            if res.should_return():
+                return res
+            if value.is_true():
+                results.append(element)
+
+        return res.success(List(results))
+
+    @args(["list", "func", "initial"])
+    def execute_reduce(self, exec_ctx):
+        res = RTResult()
+        list_ = exec_ctx.symbol_table.get("list")
+        func = exec_ctx.symbol_table.get("func")
+        initial = exec_ctx.symbol_table.get("initial")
+
+        if not isinstance(list_, List):
+            return res.failure(RTError(
+                self.pos_start, self.pos_end,
+                "First argument must be list",
+                exec_ctx
+            ))
+        if not isinstance(func, BaseFunction):
+            return res.failure(RTError(
+                self.pos_start, self.pos_end,
+                "Second argument must be function",
+                exec_ctx
+            ))
+
+        result = initial
+        for element in list_.elements:
+            result = res.register(func.execute([result, element]))
+            if res.should_return():
+                return res
+
+        return res.success(result)
+
+    @args(["list", "sep"])
+    def execute_join(self, exec_ctx):
+        list_ = exec_ctx.symbol_table.get("list")
+        sep = exec_ctx.symbol_table.get("sep")
+
+        if not isinstance(list_, List):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "First argument must be list",
+                exec_ctx
+            ))
+        if not isinstance(sep, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Second argument must be string",
+                exec_ctx
+            ))
+
+        result = sep.value.join([str(x) for x in list_.elements])
+        return RTResult().success(String(result))
+
+    @args(["text", "sep"])
+    def execute_split(self, exec_ctx):
+        text = exec_ctx.symbol_table.get("text")
+        sep = exec_ctx.symbol_table.get("sep")
+
+        if not isinstance(text, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "First argument must be string",
+                exec_ctx
+            ))
+        if not isinstance(sep, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Second argument must be string",
+                exec_ctx
+            ))
+        if sep.value == "":
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Separator cannot be empty",
+                exec_ctx
+            ))
+
+        parts = [String(part) for part in text.value.split(sep.value)]
+        return RTResult().success(List(parts))
+
+    @args(["text"])
+    def execute_trim(self, exec_ctx):
+        text = exec_ctx.symbol_table.get("text")
+        if not isinstance(text, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Argument must be string",
+                exec_ctx
+            ))
+        return RTResult().success(String(text.value.strip()))
+
+    @args(["text"])
+    def execute_ltrim(self, exec_ctx):
+        text = exec_ctx.symbol_table.get("text")
+        if not isinstance(text, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Argument must be string",
+                exec_ctx
+            ))
+        return RTResult().success(String(text.value.lstrip()))
+
+    @args(["text"])
+    def execute_rtrim(self, exec_ctx):
+        text = exec_ctx.symbol_table.get("text")
+        if not isinstance(text, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Argument must be string",
+                exec_ctx
+            ))
+        return RTResult().success(String(text.value.rstrip()))
+
+    @args(["text", "prefix"])
+    def execute_startswith(self, exec_ctx):
+        text = exec_ctx.symbol_table.get("text")
+        prefix = exec_ctx.symbol_table.get("prefix")
+        if not isinstance(text, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "First argument must be string",
+                exec_ctx
+            ))
+        if not isinstance(prefix, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Second argument must be string",
+                exec_ctx
+            ))
+        return RTResult().success(Number.true if text.value.startswith(prefix.value) else Number.false)
+
+    @args(["text", "suffix"])
+    def execute_endswith(self, exec_ctx):
+        text = exec_ctx.symbol_table.get("text")
+        suffix = exec_ctx.symbol_table.get("suffix")
+        if not isinstance(text, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "First argument must be string",
+                exec_ctx
+            ))
+        if not isinstance(suffix, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Second argument must be string",
+                exec_ctx
+            ))
+        return RTResult().success(Number.true if text.value.endswith(suffix.value) else Number.false)
+
+    @args(["text", "part"])
+    def execute_contains(self, exec_ctx):
+        text = exec_ctx.symbol_table.get("text")
+        part = exec_ctx.symbol_table.get("part")
+        if not isinstance(text, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "First argument must be string",
+                exec_ctx
+            ))
+        if not isinstance(part, String):
+            return RTResult().failure(RTError(
+                self.pos_start, self.pos_end,
+                "Second argument must be string",
+                exec_ctx
+            ))
+        return RTResult().success(Number.true if part.value in text.value else Number.false)
 
     @args(["fn"])
     def execute_run(self, exec_ctx):
@@ -1014,6 +1306,18 @@ BuiltInFunction.append = BuiltInFunction("append")
 BuiltInFunction.pop = BuiltInFunction("pop")
 BuiltInFunction.extend = BuiltInFunction("extend")
 BuiltInFunction.len = BuiltInFunction("len")
+BuiltInFunction.range = BuiltInFunction("range")
+BuiltInFunction.map = BuiltInFunction("map")
+BuiltInFunction.filter = BuiltInFunction("filter")
+BuiltInFunction.reduce = BuiltInFunction("reduce")
+BuiltInFunction.join = BuiltInFunction("join")
+BuiltInFunction.split = BuiltInFunction("split")
+BuiltInFunction.trim = BuiltInFunction("trim")
+BuiltInFunction.ltrim = BuiltInFunction("ltrim")
+BuiltInFunction.rtrim = BuiltInFunction("rtrim")
+BuiltInFunction.startswith = BuiltInFunction("startswith")
+BuiltInFunction.endswith = BuiltInFunction("endswith")
+BuiltInFunction.contains = BuiltInFunction("contains")
 BuiltInFunction.run = BuiltInFunction("run")
 BuiltInFunction.open = BuiltInFunction("open")
 BuiltInFunction.read = BuiltInFunction("read")
@@ -1287,6 +1591,8 @@ class Interpreter:
             result, error = left.multed_by(right)
         elif node.op_tok.type == TokenType.DIV:
             result, error = left.dived_by(right)
+        elif node.op_tok.type == TokenType.MOD:
+            result, error = left.modded_by(right)
         elif node.op_tok.type == TokenType.POW:
             result, error = left.powed_by(right)
         elif node.op_tok.type == TokenType.EE:
@@ -1768,6 +2074,18 @@ global_symbol_table.set("append", BuiltInFunction.append)
 global_symbol_table.set("pop", BuiltInFunction.pop)
 global_symbol_table.set("extend", BuiltInFunction.extend)
 global_symbol_table.set("len", BuiltInFunction.len)
+global_symbol_table.set("range", BuiltInFunction.range)
+global_symbol_table.set("map", BuiltInFunction.map)
+global_symbol_table.set("filter", BuiltInFunction.filter)
+global_symbol_table.set("reduce", BuiltInFunction.reduce)
+global_symbol_table.set("join", BuiltInFunction.join)
+global_symbol_table.set("split", BuiltInFunction.split)
+global_symbol_table.set("trim", BuiltInFunction.trim)
+global_symbol_table.set("ltrim", BuiltInFunction.ltrim)
+global_symbol_table.set("rtrim", BuiltInFunction.rtrim)
+global_symbol_table.set("startswith", BuiltInFunction.startswith)
+global_symbol_table.set("endswith", BuiltInFunction.endswith)
+global_symbol_table.set("contains", BuiltInFunction.contains)
 global_symbol_table.set("run", BuiltInFunction.run)
 global_symbol_table.set("open", BuiltInFunction.open)
 global_symbol_table.set("read", BuiltInFunction.read)
