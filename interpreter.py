@@ -1051,7 +1051,7 @@ class Iterator(Value):
 
 
 class Dict(Value):
-    def __init__(self, values):
+    def __init__(self, values: dict[str, "Value"]):
         super().__init__()
         self.values = values
         self.value = values
@@ -1060,8 +1060,8 @@ class Dict(Value):
         if not isinstance(other, Dict):
             return None, self.illegal_operation(other)
 
-        other_dict = cast(Dict, other)
-        new_dict = cast(Dict, self.copy())
+        other_dict: Dict = cast(Dict, other)
+        new_dict: Dict = cast(Dict, self.copy())
         for key, value in other_dict.values.items():
             new_dict.values[key] = value
 

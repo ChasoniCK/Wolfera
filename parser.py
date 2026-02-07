@@ -489,15 +489,19 @@ class Parser:
         elif tok.type == TokenType.IDENTIFIER:
             self.advance(res)
             if self.current_tok.type == TokenType.LCURLY:
-                struct_name = tok.value
-                self.advance(res)
-                if self.current_tok.type != TokenType.RCURLY:
-                    return res.failure(InvalidSyntaxError(
-                        self.current_tok.pos_start, self.current_tok.pos_end,
-                        "Expected '}'"
-                    ))
-                self.advance(res)
-                node = StructCreationNode(struct_name)
+                next_tok = self.tokens[self.tok_idx + 1] if self.tok_idx + 1 < len(self.tokens) else None
+                if next_tok is not None and next_tok.type == TokenType.RCURLY:
+                    struct_name = tok.value
+                    self.advance(res)
+                    if self.current_tok.type != TokenType.RCURLY:
+                        return res.failure(InvalidSyntaxError(
+                            self.current_tok.pos_start, self.current_tok.pos_end,
+                            "Expected '}'"
+                        ))
+                    self.advance(res)
+                    node = StructCreationNode(struct_name)
+                else:
+                    node = VarAccessNode(tok)
             else:
                 node = VarAccessNode(tok)
 
