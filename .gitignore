@@ -48,5 +48,8 @@ htmlcov/
 # ===== Logs =====
 *.log
 
+# ===== Wolfera =====
+.path
+
 # ===== OS trash =====
 .Trashes
