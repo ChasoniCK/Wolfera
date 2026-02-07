@@ -228,7 +228,7 @@ def run_code(text: str, filename: str, argv: list[str]):
 def repl():
     while True:
         try:
-            text = input('myopl++ > ')
+            text = input('>>> ')
         except EOFError:
             break
         if text.strip() == "":

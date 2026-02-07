@@ -170,12 +170,24 @@ class BreakNode:
 
 @dataclass
 class ImportNode:
-    string_node: StringNode
+    module_path: Any
     pos_start: Position
     pos_end: Position
 
     def __repr__(self) -> str:
-        return f"IMPORT {self.string_node!r}"
+        return f"IMPORT {self.module_path!r}"
+
+
+@dataclass
+class FromImportNode:
+    module_path: list[str]
+    names: list[Token]
+    pos_start: Position
+    pos_end: Position
+
+    def __repr__(self) -> str:
+        names = ", ".join([name.value for name in self.names])
+        return f"FROM {'.'.join(self.module_path)} IMPORT {{{names}}}"
 
 
 @dataclass

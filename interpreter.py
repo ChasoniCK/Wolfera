@@ -6,6 +6,7 @@ import sys
 import time
 from typing import Any, ClassVar, Optional, Protocol, cast
 
+from ast_nodes import StringNode
 from errors import RTError, TryError
 from lexer import Lexer, Position, TokenType
 from parser import Parser
@@ -15,6 +16,7 @@ from parser import Parser
 #######################################
 
 files = {}
+MODULE_CACHE = {}
 
 #######################################
 # CONSTANTS
@@ -27,7 +29,7 @@ if not os.path.isfile(IMPORT_PATH_NAME):
         f.write("\n".join(IMPORT_PATHS))
 else:
     with open(IMPORT_PATH_NAME, "r") as f:
-        IMPORT_PATHS = list(f.readlines())
+        IMPORT_PATHS = [line.strip() for line in f.readlines() if line.strip()]
 
 #######################################
 # VALUES (BASE)
@@ -634,6 +636,8 @@ class BuiltInFunction(BaseFunction):
     write: ClassVar["BuiltInFunction"]
     close: ClassVar["BuiltInFunction"]
     wait: ClassVar["BuiltInFunction"]
+    time_now: ClassVar["BuiltInFunction"]
+    time_ms: ClassVar["BuiltInFunction"]
 
     def __init__(self, name):
         super().__init__(name)
@@ -912,7 +916,7 @@ class BuiltInFunction(BaseFunction):
             value = res.register(func.execute([element]))
             if res.should_return():
                 return res
-            if value.is_true():
+            if value is not None and value.is_true():
                 results.append(element)
 
         return res.success(List(results))
@@ -939,7 +943,8 @@ class BuiltInFunction(BaseFunction):
 
         result = initial
         for element in list_.elements:
-            result = res.register(func.execute([result, element]))
+            args: list[Value] = [result, element]
+            result = res.register(func.execute(args))
             if res.should_return():
                 return res
 
@@ -1292,6 +1297,14 @@ class BuiltInFunction(BaseFunction):
 
         return RTResult().success(Number.null)
 
+    @args([])
+    def execute_time_now(self, exec_ctx):
+        return RTResult().success(Number(time.time()))
+
+    @args([])
+    def execute_time_ms(self, exec_ctx):
+        return RTResult().success(Number(int(time.time() * 1000)))
+
 
 BuiltInFunction.print = BuiltInFunction("print")
 BuiltInFunction.print_ret = BuiltInFunction("print_ret")
@@ -1324,6 +1337,8 @@ BuiltInFunction.read = BuiltInFunction("read")
 BuiltInFunction.write = BuiltInFunction("write")
 BuiltInFunction.close = BuiltInFunction("close")
 BuiltInFunction.wait = BuiltInFunction("wait")
+BuiltInFunction.time_now = BuiltInFunction("time_now")
+BuiltInFunction.time_ms = BuiltInFunction("time_ms")
 
 
 class Iterator(Value):
@@ -1452,6 +1467,33 @@ class StructInstance(Value):
     def copy(self):
         return StructInstance(self.struct_name, self.fields).set_pos(self.pos_start, self.pos_end).set_context(self.context)
 
+
+class Module(Value):
+    def __init__(self, name, symbols):
+        super().__init__()
+        self.name = name
+        self.symbols = symbols
+
+    def get_dot(self, verb):
+        if verb in self.symbols:
+            value = self.symbols[verb]
+            return value.copy().set_context(self.context), None
+        return None, RTError(
+            self.pos_start, self.pos_end,
+            f"Module '{self.name}' has no member named '{verb}'",
+            self.context,
+        )
+
+    def set_dot(self, verb, value):
+        self.symbols[verb] = value
+        return Number.null, None
+
+    def copy(self):
+        return Module(self.name, self.symbols).set_pos(self.pos_start, self.pos_end).set_context(self.context)
+
+    def __repr__(self):
+        return f"<module {self.name}>"
+
 #######################################
 # CONTEXT
 #######################################
@@ -1491,6 +1533,82 @@ class SymbolTable:
 
     def remove(self, name):
         del self.symbols[name]
+
+
+def module_name(parts):
+    return ".".join(parts)
+
+
+def find_module_file(parts):
+    for base in IMPORT_PATHS:
+        candidate = os.path.join(base, *parts)
+        if not candidate.endswith(".wf"):
+            candidate += ".wf"
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def load_module(parts, entry_pos, context):
+    name = module_name(parts)
+    cached = MODULE_CACHE.get(name)
+    if cached is not None:
+        return cached, None
+
+    filepath = find_module_file(parts)
+    if filepath is None:
+        return None, RTError(
+            entry_pos, entry_pos,
+            f"Can't find module '{name}'",
+            context,
+        )
+
+    with open(filepath, "r") as f:
+        code = f.read()
+
+    lexer = Lexer(filepath, code)
+    tokens, error = lexer.make_tokens()
+    if error:
+        return None, error
+
+    parser = Parser(tokens)
+    ast = parser.parse()
+    if ast.error:
+        return None, ast.error
+
+    interpreter = Interpreter()
+    module_context = Context(f"<module {name}>", None, entry_pos)
+    module_context.symbol_table = SymbolTable(global_symbol_table)
+    result = interpreter.visit(ast.node, module_context)
+    if result.error:
+        return None, result.error
+
+    module = Module(name, module_context.symbol_table.symbols)
+    module.set_pos(entry_pos, entry_pos).set_context(module_context)
+    MODULE_CACHE[name] = module
+    return module, None
+
+
+def attach_module(symbol_table, parts, module):
+    if len(parts) == 1:
+        symbol_table.set(parts[0], module)
+        return
+
+    root_name = parts[0]
+    root = symbol_table.get(root_name)
+    if not isinstance(root, Module):
+        root = Module(root_name, {}).set_context(module.context).set_pos(module.pos_start, module.pos_end)
+        symbol_table.set(root_name, root)
+
+    current = root
+    for part in parts[1:-1]:
+        child = current.symbols.get(part)
+        if not isinstance(child, Module):
+            child = Module(part, {}).set_context(module.context).set_pos(module.pos_start, module.pos_end)
+            current.symbols[part] = child
+        current = child
+
+    current.symbols[parts[-1]] = module
 
 #######################################
 # INTERPRETER
@@ -1803,34 +1921,61 @@ class Interpreter:
 
     def visit_ImportNode(self, node, context):
         res = RTResult()
-        filename = res.register(self.visit(node.string_node, context))
-        code = None
-        filepath = filename.value
+        if isinstance(node.module_path, StringNode):
+            filename = res.register(self.visit(node.module_path, context))
+            code = None
+            filepath = filename.value
 
-        for path in IMPORT_PATHS:
-            try:
-                filepath = os.path.join(path, filename.value)
-                with open(filepath, "r") as f:
-                    code = f.read()
-                    beginning = "/" if filepath.startswith("/") else ""
-                    split = filepath.split("/")
-                    split = beginning + "/".join(split[:-1]), split[-1]
-                    os.chdir(split[0])
-                    filename = split[1]
-                    break
-            except FileNotFoundError:
-                continue
+            for path in IMPORT_PATHS:
+                try:
+                    filepath = os.path.join(path, filename.value)
+                    with open(filepath, "r") as f:
+                        code = f.read()
+                        beginning = "/" if filepath.startswith("/") else ""
+                        split = filepath.split("/")
+                        split = beginning + "/".join(split[:-1]), split[-1]
+                        os.chdir(split[0])
+                        filename = split[1]
+                        break
+                except FileNotFoundError:
+                    continue
 
-        if code is None:
-            return res.failure(RTError(
-                node.string_node.pos_start.copy(), node.string_node.pos_end.copy(),
-                f"Can't find file '{filepath}' in '{IMPORT_PATH_NAME}'. Please add the directory your file is into that file",
-                context
-            ))
+            if code is None:
+                return res.failure(RTError(
+                    node.module_path.pos_start.copy(), node.module_path.pos_end.copy(),
+                    f"Can't find file '{filepath}' in '{IMPORT_PATH_NAME}'. Please add the directory your file is into that file",
+                    context
+                ))
 
-        _, error = run(filename, code, context, node.pos_start.copy())
+            _, error = run(filename, code, context, node.pos_start.copy())
+            if error:
+                return res.failure(error)
+
+            return res.success(Number.null)
+
+        module, error = load_module(node.module_path, node.pos_start.copy(), context)
         if error:
             return res.failure(error)
+
+        assert context.symbol_table is not None
+        attach_module(context.symbol_table, node.module_path, module)
+        return res.success(Number.null)
+
+    def visit_FromImportNode(self, node, context):
+        res = RTResult()
+        module, error = load_module(node.module_path, node.pos_start.copy(), context)
+        if error:
+            return res.failure(error)
+
+        assert context.symbol_table is not None
+        for name in node.names:
+            if name.value not in module.symbols:
+                return res.failure(RTError(
+                    node.pos_start.copy(), node.pos_end.copy(),
+                    f"Module '{module.name}' has no member named '{name.value}'",
+                    context
+                ))
+            context.symbol_table.set(name.value, module.symbols[name.value])
 
         return res.success(Number.null)
 
@@ -2092,6 +2237,8 @@ global_symbol_table.set("read", BuiltInFunction.read)
 global_symbol_table.set("write", BuiltInFunction.write)
 global_symbol_table.set("close", BuiltInFunction.close)
 global_symbol_table.set("wait", BuiltInFunction.wait)
+global_symbol_table.set("time_now", BuiltInFunction.time_now)
+global_symbol_table.set("time_ms", BuiltInFunction.time_ms)
 
 
 def run(fn, text, context=None, entry_pos=None, argv: Optional[list[str]] = None):

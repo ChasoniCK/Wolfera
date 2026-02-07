@@ -1,0 +1,24 @@
+# timing helpers
+
+fun now_seconds() {
+	return time_now()
+}
+
+fun now_ms() {
+	return time_ms()
+}
+
+# now("ms") -> milliseconds, now("s") -> seconds
+fun now(unit) {
+	if unit == "ms" { return time_ms() }
+	if unit == "s" { return time_now() }
+	return time_now()
+}
+
+# time a zero-arg function; returns [result, elapsed_ms]
+fun time_exec(fn) {
+	start = time_ms()
+	result = fn()
+	end = time_ms()
+	return [result, end - start]
+}

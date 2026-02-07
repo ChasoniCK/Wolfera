@@ -1,3 +1,7 @@
+import time
+
+start_time = time.now("s")
+
 # This is a very useful piece of software
 
 #*
@@ -35,3 +39,11 @@ print("Greetings universe!")
 for i = 0 to 5 {
 	print(join(map(["l", "sp"], oopify), ", "))
 }
+
+wait(15)
+
+stop_time = time.now("s")
+execu_time = stop_time - start_time
+
+print("Time to exec:")
+print(execu_time)

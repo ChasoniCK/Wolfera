@@ -15,7 +15,7 @@ try {
 
 # Catch SyntaxErrors in other files
 try {
-    import "some_bad_library.myopl"
+    import "some_bad_library.wf"
 } catch as error {
     print("really bad library")
     print(error)

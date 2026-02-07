@@ -1,4 +1,4 @@
-fd = open("file-io.myopl")
+fd = open("file-io.wf")
 print(read(fd, 5000000))
 close(fd)
 

@@ -13,6 +13,7 @@ from ast_nodes import (
     DoNode,
     DotGetNode,
     DotSetNode,
+    FromImportNode,
     ForInNode,
     ForNode,
     FuncDefNode,
@@ -155,6 +156,29 @@ class Parser:
             self.current_tok.pos_end.copy()
         ))
 
+    def import_path(self):
+        res = ParseResult()
+        if self.current_tok.type != TokenType.IDENTIFIER:
+            return res.failure(InvalidSyntaxError(
+                self.current_tok.pos_start, self.current_tok.pos_end,
+                "Expected identifier"
+            ))
+
+        parts = [self.current_tok.value]
+        self.advance(res)
+
+        while self.current_tok.type == TokenType.DOT:
+            self.advance(res)
+            if self.current_tok.type != TokenType.IDENTIFIER:
+                return res.failure(InvalidSyntaxError(
+                    self.current_tok.pos_start, self.current_tok.pos_end,
+                    "Expected identifier"
+                ))
+            parts.append(self.current_tok.value)
+            self.advance(res)
+
+        return res.success(parts)
+
     def block(self):
         res = ParseResult()
 
@@ -210,15 +234,63 @@ class Parser:
 
         if self.current_tok.matches(TokenType.KEYWORD, 'import'):
             self.advance(res)
+            if self.current_tok.type == TokenType.STRING:
+                string = res.register(self.atom())
+                return res.success(ImportNode(string, pos_start, self.current_tok.pos_start.copy()))
 
-            if not self.current_tok.type == TokenType.STRING:
+            module_path = res.register(self.import_path())
+            if res.error:
+                return res
+            return res.success(ImportNode(module_path, pos_start, self.current_tok.pos_start.copy()))
+
+        if self.current_tok.matches(TokenType.KEYWORD, 'from'):
+            self.advance(res)
+            module_path = res.register(self.import_path())
+            if res.error:
+                return res
+
+            if not self.current_tok.matches(TokenType.KEYWORD, 'import'):
                 return res.failure(InvalidSyntaxError(
                     self.current_tok.pos_start, self.current_tok.pos_end,
-                    "Expected string"
+                    "Expected 'import'"
                 ))
+            self.advance(res)
 
-            string = res.register(self.atom())
-            return res.success(ImportNode(string, pos_start, self.current_tok.pos_start.copy()))
+            if self.current_tok.type != TokenType.LCURLY:
+                return res.failure(InvalidSyntaxError(
+                    self.current_tok.pos_start, self.current_tok.pos_end,
+                    "Expected '{'"
+                ))
+            self.advance(res)
+
+            names = []
+            if self.current_tok.type != TokenType.RCURLY:
+                if self.current_tok.type != TokenType.IDENTIFIER:
+                    return res.failure(InvalidSyntaxError(
+                        self.current_tok.pos_start, self.current_tok.pos_end,
+                        "Expected identifier"
+                    ))
+                names.append(self.current_tok)
+                self.advance(res)
+
+                while self.current_tok.type == TokenType.COMMA:
+                    self.advance(res)
+                    if self.current_tok.type != TokenType.IDENTIFIER:
+                        return res.failure(InvalidSyntaxError(
+                            self.current_tok.pos_start, self.current_tok.pos_end,
+                            "Expected identifier"
+                        ))
+                    names.append(self.current_tok)
+                    self.advance(res)
+
+            if self.current_tok.type != TokenType.RCURLY:
+                return res.failure(InvalidSyntaxError(
+                    self.current_tok.pos_start, self.current_tok.pos_end,
+                    "Expected '}'"
+                ))
+            end_pos = self.current_tok.pos_end.copy()
+            self.advance(res)
+            return res.success(FromImportNode(module_path, names, pos_start, end_pos))
 
         if self.current_tok.matches(TokenType.KEYWORD, 'try'):
             self.advance(res)
