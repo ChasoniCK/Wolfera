@@ -1,0 +1,52 @@
+# ===== macOS =====
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ===== Python bytecode =====
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ===== Virtual environments =====
+venv/
+.env/
+.envrc
+.venv/
+ENV/
+env/
+virtualenv/
+
+# ===== Python build artifacts =====
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ===== PyInstaller =====
+*.manifest
+*.spec
+
+# ===== Pytest / coverage =====
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ===== Mypy =====
+.mypy_cache/
+
+# ===== Ruff =====
+.ruff_cache/
+
+# ===== IDEs / editors =====
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===== Logs =====
+*.log
+
+# ===== OS trash =====
+.Trashes
