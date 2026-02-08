@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import importlib.util
 import math
 import os
 import sys
 import time
-from typing import Any, ClassVar, Optional, Protocol, cast
+from typing import Any, Callable, ClassVar, Optional, Protocol, cast
 
-from ast_nodes import StringNode
+from ast_nodes import ListNode, StringNode
 from errors import RTError, TryError
 from lexer import Lexer, Position, TokenType
 from parser import Parser
@@ -220,8 +221,9 @@ class Number(Value):
     def added_to(self, other):
         if isinstance(other, Number):
             return Number(self.value + other.value).set_context(self.context), None
-        else:
-            return None, Value.illegal_operation(self, other)
+        if isinstance(other, String):
+            return String(str(self.value) + other.value).set_context(self.context), None
+        return None, Value.illegal_operation(self, other)
 
     def subbed_by(self, other):
         if isinstance(other, Number):
@@ -348,8 +350,9 @@ class String(Value):
     def added_to(self, other):
         if isinstance(other, String):
             return String(self.value + other.value).set_context(self.context), None
-        else:
-            return None, Value.illegal_operation(self, other)
+        if isinstance(other, Value):
+            return String(self.value + str(other)).set_context(self.context), None
+        return None, Value.illegal_operation(self, other)
 
     def multed_by(self, other):
         if isinstance(other, Number):
@@ -595,6 +598,35 @@ class Function(BaseFunction):
         return f"<function {self.name}>"
 
 
+class PyFunction(BaseFunction):
+    def __init__(self, name: str, func: Callable[..., Any]):
+        super().__init__(name)
+        self.func = func
+
+    def execute(self, args):
+        res = RTResult()
+        try:
+            py_args = [value_to_py(arg) for arg in args]
+            result = self.func(*py_args)
+        except Exception as exc:
+            return res.failure(RTError(
+                self.pos_start, self.pos_end,
+                f"Python error in {self.name}: {exc}",
+                self.context,
+            ))
+
+        return res.success(py_to_value(result, self.context, self.pos_start))
+
+    def copy(self):
+        copy = PyFunction(self.name, self.func)
+        copy.set_context(self.context)
+        copy.set_pos(self.pos_start, self.pos_end)
+        return copy
+
+    def __repr__(self):
+        return f"<py-function {self.name}>"
+
+
 class BuiltinMethod(Protocol):
     arg_names: list[str]
     defaults: list[Any]
@@ -636,8 +668,6 @@ class BuiltInFunction(BaseFunction):
     write: ClassVar["BuiltInFunction"]
     close: ClassVar["BuiltInFunction"]
     wait: ClassVar["BuiltInFunction"]
-    time_now: ClassVar["BuiltInFunction"]
-    time_ms: ClassVar["BuiltInFunction"]
 
     def __init__(self, name):
         super().__init__(name)
@@ -1297,13 +1327,6 @@ class BuiltInFunction(BaseFunction):
 
         return RTResult().success(Number.null)
 
-    @args([])
-    def execute_time_now(self, exec_ctx):
-        return RTResult().success(Number(time.time()))
-
-    @args([])
-    def execute_time_ms(self, exec_ctx):
-        return RTResult().success(Number(int(time.time() * 1000)))
 
 
 BuiltInFunction.print = BuiltInFunction("print")
@@ -1337,8 +1360,6 @@ BuiltInFunction.read = BuiltInFunction("read")
 BuiltInFunction.write = BuiltInFunction("write")
 BuiltInFunction.close = BuiltInFunction("close")
 BuiltInFunction.wait = BuiltInFunction("wait")
-BuiltInFunction.time_now = BuiltInFunction("time_now")
-BuiltInFunction.time_ms = BuiltInFunction("time_ms")
 
 
 class Iterator(Value):
@@ -1535,6 +1556,58 @@ class SymbolTable:
         del self.symbols[name]
 
 
+def value_to_py(value):
+    if isinstance(value, Number):
+        return value.value
+    if isinstance(value, String):
+        return value.value
+    if isinstance(value, List):
+        return [value_to_py(v) for v in value.elements]
+    if isinstance(value, Dict):
+        return {k: value_to_py(v) for k, v in value.values.items()}
+    if isinstance(value, BaseFunction):
+        def _call(*py_args):
+            fake_pos = create_fake_pos("<py arg>")
+            wf_args = [py_to_value(arg, value.context, fake_pos) for arg in py_args]
+            res = value.execute(wf_args)
+            if res.error:
+                raise RuntimeError(res.error.as_string())
+            return value_to_py(res.value)
+
+        return _call
+    if isinstance(value, Module):
+        return {k: value_to_py(v) for k, v in value.symbols.items()}
+    return value
+
+
+def py_to_value(obj, context, pos_start):
+    fake_pos = pos_start or create_fake_pos("<py>")
+    if isinstance(obj, Value):
+        return obj
+    if obj is None:
+        val = Number.null.copy()
+    elif isinstance(obj, bool):
+        val = Number.true.copy() if obj else Number.false.copy()
+    elif isinstance(obj, (int, float)):
+        val = Number(obj)
+    elif isinstance(obj, str):
+        val = String(obj)
+    elif isinstance(obj, (list, tuple)):
+        val = List([py_to_value(v, context, fake_pos) for v in obj])
+    elif isinstance(obj, dict):
+        val = Dict({str(k): py_to_value(v, context, fake_pos) for k, v in obj.items()})
+    elif callable(obj):
+        name = getattr(obj, "__name__", "py_fn")
+        val = PyFunction(name, obj)
+    else:
+        val = String(str(obj))
+
+    if context is not None:
+        val.set_context(context)
+    val.set_pos(fake_pos, fake_pos)
+    return val
+
+
 def module_name(parts):
     return ".".join(parts)
 
@@ -1542,10 +1615,12 @@ def module_name(parts):
 def find_module_file(parts):
     for base in IMPORT_PATHS:
         candidate = os.path.join(base, *parts)
-        if not candidate.endswith(".wf"):
-            candidate += ".wf"
-        if os.path.isfile(candidate):
-            return candidate
+        py_candidate = candidate + ".py"
+        if os.path.isfile(py_candidate):
+            return py_candidate
+        wf_candidate = candidate + ".wf"
+        if os.path.isfile(wf_candidate):
+            return wf_candidate
     return None
 
 
@@ -1563,29 +1638,97 @@ def load_module(parts, entry_pos, context):
             context,
         )
 
-    with open(filepath, "r") as f:
-        code = f.read()
+    if filepath.endswith(".py"):
+        module, error = load_python_module(name, filepath, entry_pos, context)
+        if error:
+            return None, error
+    else:
+        with open(filepath, "r") as f:
+            code = f.read()
 
-    lexer = Lexer(filepath, code)
-    tokens, error = lexer.make_tokens()
-    if error:
-        return None, error
+        lexer = Lexer(filepath, code)
+        tokens, error = lexer.make_tokens()
+        if error:
+            return None, error
 
-    parser = Parser(tokens)
-    ast = parser.parse()
-    if ast.error:
-        return None, ast.error
+        parser = Parser(tokens)
+        ast = parser.parse()
+        if ast.error:
+            return None, ast.error
 
-    interpreter = Interpreter()
-    module_context = Context(f"<module {name}>", None, entry_pos)
-    module_context.symbol_table = SymbolTable(global_symbol_table)
-    result = interpreter.visit(ast.node, module_context)
-    if result.error:
-        return None, result.error
+        interpreter = Interpreter()
+        module_context = Context(f"<module {name}>", None, entry_pos)
+        module_context.symbol_table = SymbolTable(global_symbol_table)
+        result = interpreter.visit(ast.node, module_context)
+        if result.error:
+            return None, result.error
 
-    module = Module(name, module_context.symbol_table.symbols)
-    module.set_pos(entry_pos, entry_pos).set_context(module_context)
+        module = Module(name, module_context.symbol_table.symbols)
+    module.set_pos(entry_pos, entry_pos)
+    if module.context is None:
+        module.set_context(module_context)
     MODULE_CACHE[name] = module
+    return module, None
+
+
+def load_python_module(name, filepath, entry_pos, context):
+    spec = importlib.util.spec_from_file_location(f"wolfera_{name.replace('.', '_')}", filepath)
+    if spec is None or spec.loader is None:
+        return None, RTError(
+            entry_pos, entry_pos,
+            f"Failed to load python module '{name}'",
+            context,
+        )
+
+    py_module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(py_module)
+    except Exception as exc:
+        return None, RTError(
+            entry_pos, entry_pos,
+            f"Python module '{name}' error: {exc}",
+            context,
+        )
+
+    exports_func = getattr(py_module, "exports", None)
+    if not callable(exports_func):
+        return None, RTError(
+            entry_pos, entry_pos,
+            f"Python module '{name}' must define exports()",
+            context,
+        )
+
+    try:
+        exports = exports_func()
+    except Exception as exc:
+        return None, RTError(
+            entry_pos, entry_pos,
+            f"Python module '{name}' exports() failed: {exc}",
+            context,
+        )
+
+    if not isinstance(exports, dict):
+        return None, RTError(
+            entry_pos, entry_pos,
+            f"Python module '{name}' exports() must return dict",
+            context,
+        )
+
+    module_context = Context(f"<py module {name}>", None, entry_pos)
+    module_context.symbol_table = SymbolTable(global_symbol_table)
+
+    symbols = {}
+    for key, value in exports.items():
+        if not isinstance(key, str):
+            return None, RTError(
+                entry_pos, entry_pos,
+                f"Python module '{name}' export keys must be strings",
+                context,
+            )
+        symbols[key] = py_to_value(value, module_context, entry_pos)
+
+    module = Module(name, symbols)
+    module.set_pos(entry_pos, entry_pos).set_context(module_context)
     return module, None
 
 
@@ -1637,6 +1780,79 @@ class Interpreter:
             String(node.tok.value).set_context(
                 context).set_pos(node.pos_start, node.pos_end)
         )
+
+    def visit_FStringNode(self, node, context):
+        res = RTResult()
+        raw = node.tok.value
+        result_parts = []
+        i = 0
+        length = len(raw)
+
+        while i < length:
+            ch = raw[i]
+            if ch == '{':
+                if i + 1 < length and raw[i + 1] == '{':
+                    result_parts.append('{')
+                    i += 2
+                    continue
+
+                end_idx = raw.find('}', i + 1)
+                if end_idx == -1:
+                    return res.failure(RTError(
+                        node.pos_start, node.pos_end,
+                        "Unclosed '{' in f-string",
+                        context,
+                    ))
+
+                expr_text = raw[i + 1:end_idx].strip()
+                if not expr_text:
+                    return res.failure(RTError(
+                        node.pos_start, node.pos_end,
+                        "Empty expression in f-string",
+                        context,
+                    ))
+
+                expr_value = self.eval_fstring_expr(expr_text, context, node.pos_start)
+                if isinstance(expr_value, RTResult):
+                    if expr_value.error:
+                        return expr_value
+                    expr_value = expr_value.value
+                result_parts.append(str(expr_value))
+                i = end_idx + 1
+                continue
+
+            if ch == '}' and i + 1 < length and raw[i + 1] == '}':
+                result_parts.append('}')
+                i += 2
+                continue
+
+            result_parts.append(ch)
+            i += 1
+
+        return res.success(String("".join(result_parts)).set_context(context).set_pos(node.pos_start, node.pos_end))
+
+    def eval_fstring_expr(self, expr_text, context, pos_start):
+        lexer = Lexer("<fstring>", expr_text)
+        tokens, error = lexer.make_tokens()
+        if error:
+            return RTResult().failure(error)
+
+        parser = Parser(tokens)
+        ast = parser.parse()
+        if ast.error:
+            return RTResult().failure(ast.error)
+
+        expr_node = ast.node
+        if isinstance(expr_node, ListNode):
+            if len(expr_node.element_nodes) != 1:
+                return RTResult().failure(RTError(
+                    pos_start, pos_start,
+                    "f-string expression must be a single expression",
+                    context,
+                ))
+            expr_node = expr_node.element_nodes[0]
+
+        return self.visit(expr_node, context)
 
     def visit_ListNode(self, node, context):
         res = RTResult()
@@ -2237,8 +2453,6 @@ global_symbol_table.set("read", BuiltInFunction.read)
 global_symbol_table.set("write", BuiltInFunction.write)
 global_symbol_table.set("close", BuiltInFunction.close)
 global_symbol_table.set("wait", BuiltInFunction.wait)
-global_symbol_table.set("time_now", BuiltInFunction.time_now)
-global_symbol_table.set("time_ms", BuiltInFunction.time_ms)
 
 
 def run(fn, text, context=None, entry_pos=None, argv: Optional[list[str]] = None):

@@ -37,6 +37,7 @@ class TokenType(Enum):
     INT = auto()
     FLOAT = auto()
     STRING = auto()
+    FSTRING = auto()
     IDENTIFIER = auto()
     KEYWORD = auto()
     PLUS = auto()
@@ -153,11 +154,19 @@ class Lexer:
         self.pos.advance(self.current_char)
         self.current_char = self.text[self.pos.idx] if self.pos.idx < len(self.text) else None
 
+    def peek(self):
+        peek_idx = self.pos.idx + 1
+        if peek_idx >= len(self.text):
+            return None
+        return self.text[peek_idx]
+
     def make_tokens(self):
         tokens = []
 
         while self.current_char is not None:
-            if self.current_char in SINGLE_CHAR_TOKS:
+            if self.current_char == 'f' and self.peek() == '"':
+                tokens.append(self.make_fstring())
+            elif self.current_char in SINGLE_CHAR_TOKS:
                 tt = SINGLE_CHAR_TOKS[self.current_char]
                 pos = self.pos.copy()
                 self.advance()
@@ -232,6 +241,29 @@ class Lexer:
         self.advance()
         return Token(
             TokenType.STRING,
+            string.encode('raw_unicode_escape').decode('unicode_escape'),
+            pos_start,
+            self.pos,
+        )
+
+    def make_fstring(self):
+        string = ''
+        pos_start = self.pos.copy()
+        escape_character = False
+        self.advance()  # skip 'f'
+        self.advance()  # skip opening quote
+
+        while self.current_char is not None and (self.current_char != '"' or escape_character):
+            if escape_character:
+                escape_character = False
+            elif self.current_char == '\\':
+                escape_character = True
+            string += self.current_char
+            self.advance()
+
+        self.advance()
+        return Token(
+            TokenType.FSTRING,
             string.encode('raw_unicode_escape').decode('unicode_escape'),
             pos_start,
             self.pos,

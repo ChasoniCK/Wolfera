@@ -14,6 +14,7 @@ from ast_nodes import (
     DotGetNode,
     DotSetNode,
     FromImportNode,
+    FStringNode,
     ForInNode,
     ForNode,
     FuncDefNode,
@@ -557,6 +558,10 @@ class Parser:
         elif tok.type == TokenType.STRING:
             self.advance(res)
             node = StringNode(tok)
+
+        elif tok.type == TokenType.FSTRING:
+            self.advance(res)
+            node = FStringNode(tok)
 
         elif tok.type == TokenType.IDENTIFIER:
             self.advance(res)

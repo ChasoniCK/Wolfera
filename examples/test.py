@@ -1,3 +1,7 @@
+import time
+
+s_start = time.time()
+
 # This is a very useful piece of software
 
 """
@@ -10,7 +14,7 @@ def oopify(prefix):
     return prefix + "oop"
 
 
-def join(elements, separator):
+def join_my(elements, separator):
     result = ""
     len_ = len(elements)
 
@@ -34,4 +38,8 @@ def map_func(elements, func):
 print("Greetings universe!")
 
 for i in range(6):
-    print(join(map_func(["l", "sp"], oopify), ", "))
+    print(join_my(map_func(["l", "sp"], oopify), ", "))
+
+s_stop = time.time()
+
+print("Execution time: " + str(s_stop - s_start) + " seconds")
