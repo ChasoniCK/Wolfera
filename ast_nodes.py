@@ -29,12 +29,15 @@ class StringNode:
 
 
 class FStringNode:
-    def __init__(self, tok):
+    def __init__(self, tok, arg_nodes=None):
         self.tok = tok
+        self.arg_nodes = arg_nodes or []
         self.pos_start = self.tok.pos_start
         self.pos_end = self.tok.pos_end
 
     def __repr__(self):
+        if self.arg_nodes:
+            return f'F{self.tok}({self.arg_nodes!r})'
         return f'F{self.tok}'
 
 class ListNode:

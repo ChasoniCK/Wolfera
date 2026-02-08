@@ -561,7 +561,13 @@ class Parser:
 
         elif tok.type == TokenType.FSTRING:
             self.advance(res)
-            node = FStringNode(tok)
+            arg_nodes = []
+            while self.current_tok.type == TokenType.COMMA:
+                self.advance(res)
+                arg_nodes.append(res.register(self.expr()))
+                if res.error:
+                    return res
+            node = FStringNode(tok, arg_nodes)
 
         elif tok.type == TokenType.IDENTIFIER:
             self.advance(res)

@@ -50,6 +50,7 @@ htmlcov/
 
 # ===== Wolfera =====
 .path
+Documentation.md
 
 # ===== OS trash =====
 .Trashes

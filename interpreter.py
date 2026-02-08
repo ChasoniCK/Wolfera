@@ -1784,6 +1784,12 @@ class Interpreter:
     def visit_FStringNode(self, node, context):
         res = RTResult()
         raw = node.tok.value
+        arg_values = []
+        for arg_node in node.arg_nodes:
+            arg_values.append(res.register(self.visit(arg_node, context)))
+            if res.should_return():
+                return res
+        arg_index = 0
         result_parts = []
         i = 0
         length = len(raw)
@@ -1806,18 +1812,21 @@ class Interpreter:
 
                 expr_text = raw[i + 1:end_idx].strip()
                 if not expr_text:
-                    return res.failure(RTError(
-                        node.pos_start, node.pos_end,
-                        "Empty expression in f-string",
-                        context,
-                    ))
-
-                expr_value = self.eval_fstring_expr(expr_text, context, node.pos_start)
-                if isinstance(expr_value, RTResult):
-                    if expr_value.error:
-                        return expr_value
-                    expr_value = expr_value.value
-                result_parts.append(str(expr_value))
+                    if arg_index >= len(arg_values):
+                        return res.failure(RTError(
+                            node.pos_start, node.pos_end,
+                            "Not enough arguments for f-string placeholders",
+                            context,
+                        ))
+                    result_parts.append(str(arg_values[arg_index]))
+                    arg_index += 1
+                else:
+                    expr_value = self.eval_fstring_expr(expr_text, context, node.pos_start)
+                    if isinstance(expr_value, RTResult):
+                        if expr_value.error:
+                            return expr_value
+                        expr_value = expr_value.value
+                    result_parts.append(str(expr_value))
                 i = end_idx + 1
                 continue
 
@@ -1828,6 +1837,13 @@ class Interpreter:
 
             result_parts.append(ch)
             i += 1
+
+        if arg_index < len(arg_values):
+            return res.failure(RTError(
+                node.pos_start, node.pos_end,
+                "Too many arguments for f-string placeholders",
+                context,
+            ))
 
         return res.success(String("".join(result_parts)).set_context(context).set_pos(node.pos_start, node.pos_end))
 
@@ -1947,6 +1963,7 @@ class Interpreter:
             result, error = left.ored_by(right)
 
         if error:
+            error.set_pos(node.op_tok.pos_start, node.right_node.pos_end)
             return res.failure(error)
         else:
             assert result is not None
@@ -1966,6 +1983,7 @@ class Interpreter:
             number, error = number.notted()
 
         if error:
+            error.set_pos(node.op_tok.pos_start, node.node.pos_end)
             return res.failure(error)
         else:
             return res.success(number.set_pos(node.pos_start, node.pos_end))

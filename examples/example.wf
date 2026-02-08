@@ -53,9 +53,7 @@ if test == true {
 # wait(5)
 
 stop_time = time.now()
-execu_time = stop_time - start_time
 
-print("Time to exec:")
-print(execu_time)
+print(f"Time to exec: {stop_time - start_time}")
 
 # print(time.now())

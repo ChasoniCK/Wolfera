@@ -50,6 +50,8 @@ def format_token(token) -> str:
         return f"NUMBER({token.value})"
     if token.type == TokenType.STRING:
         return f"STRING({token.value})"
+    if token.type == TokenType.FSTRING:
+        return f"FSTRING({token.value})"
     if token.type == TokenType.IDENTIFIER:
         return f"IDENTIFIER({token.value})"
     if token.type == TokenType.KEYWORD:
