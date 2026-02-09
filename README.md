@@ -18,7 +18,3 @@ Wolfera provides core language features like variables, functions, conditionals,
 
 - **Great for experimentation**: the interpreter and AST are clear and approachable.
 - **Modular architecture**: lexer, parser, AST, interpreter, and errors are separated for maintainability.
-
-## Getting Started
-
-(Download and installation instructions will be added here.)
